@@ -1,0 +1,45 @@
+.video-list-container {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+  }
+  
+  .video-scroll-container {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 15px;
+    white-space: nowrap;
+  }
+
+  .video-item {
+    scroll-snap-align: start;
+    margin-right: 10px;
+    flex: 0 0 auto;
+  }
+  
+  .video-item img {
+    width: 200px;
+    height: auto;
+    cursor: pointer;
+  }
+
+  .navigation-arrows {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 24px;
+    cursor: pointer;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    border-radius: 50%;
+  }
+
+  .left-arrow {
+    left: 10px;
+  }
+  
+  .right-arrow {
+    right: 10px;
+  }

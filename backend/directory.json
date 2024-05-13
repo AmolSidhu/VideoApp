@@ -1,0 +1,7 @@
+{
+  "temp_videos_dir": "temp/videos/",
+  "temp_json_dir": "temp/json/",
+  "thumbnail_dir": "data/thumbnails/",
+  "video_dir": "data/video/",
+  "json_records_dir": "data/records/"
+}
