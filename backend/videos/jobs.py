@@ -138,6 +138,7 @@ def imdb_data():
     for video in videos:
         if video.imdb_link == '':
             video.current_status = "IMDB Passed"
+            video.imdb_added = True
             video.imdb_link_failed = True
             video.save()
             continue

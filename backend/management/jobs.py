@@ -305,7 +305,7 @@ def create_json_record():
 
 def start_json_record():
     scheduler = BackgroundScheduler()
-    scheduler.add_job(create_json_record, 'interval', minutes=1)
+    scheduler.add_job(create_json_record, 'interval', minutes=10)
     scheduler.start()
 
 def check_existing_genres():

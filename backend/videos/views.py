@@ -12,8 +12,8 @@ import json
 import base64
 
 from user.models import Credentials
-from .queries import get_video_list_query, get_video_by_genre_query
-from .models import Video, TempVideo, VideoGenre
+from .queries import get_video_list_query, get_video_by_genre_query, get_recently_viewed_query
+from .models import Video, TempVideo, VideoGenre, VideoHistory
 from core.serializer import VideoSerializer, TempVideoSerializer
 
 logger = logging.getLogger(__name__)
@@ -82,11 +82,12 @@ def upload_video(request):
                 privatedata = False
             else:
                 privatedata = True
-            tags = request.data.get('tags', '[]')
-            writers = request.data.get('writers', '[]')
-            directors = request.data.get('directors', '[]')
-            stars = request.data.get('stars', '[]')
-            creators = request.data.get('creators', '[]')
+            tags = json.loads(request.data.get('tags', '[]'))
+            writers = json.loads(request.data.get('writers', '[]'))
+            directors = json.loads(request.data.get('directors', '[]'))
+            stars = json.loads(request.data.get('stars', '[]'))
+            creators = json.loads(request.data.get('creators', '[]'))
+
             video = TempVideo.objects.create(
                 video_name=video_file.name.split('.')[0],
                 current_status='File Uploaded',
@@ -185,7 +186,10 @@ def video_data(request, serial):
             if not video_data:
                 return JsonResponse({'message': 'Video not found'},
                                     status=status.HTTP_404_NOT_FOUND) 
-            length = video_data.visual_profile.get('duration', 0)   
+            resume = False
+            if VideoHistory.objects.filter(user=user,
+                                           video_serial=video_data).exists():
+                resume = True
             video = {
                 'video_name': video_data.title,
                 'video_directors': video_data.directors,
@@ -193,9 +197,9 @@ def video_data(request, serial):
                 'video_writers': video_data.writers,
                 'video_creators': video_data.creators,
                 'video_genre': video_data.tags,
-                'video_duration': length,
                 'video_description': video_data.description,
                 'video_rating': video_data.imdb_rating,
+                'resume': resume,
             }
             return JsonResponse(video,
                                 status=status.HTTP_200_OK)   
@@ -225,7 +229,6 @@ def get_genres(request):
             genres_queryset = VideoGenre.objects.filter(
                 number_of_public_records__gte=1).values('genre')
             genres_list = list(genres_queryset)
-            print(genres_list)
             return JsonResponse({'genres': genres_list},
                                 status=status.HTTP_200_OK)
     except Exception as e:
@@ -278,6 +281,67 @@ def get_video_by_genre(request, genre):
         return JsonResponse({'message': 'Internal server error'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['GET'])
+def recently_viewed(request):
+    try:
+        if request.method == 'GET':
+            token = request.headers.get('Authorization')
+            if not token:
+                return JsonResponse({'message': 'Invalid or missing token'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            try:
+                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return JsonResponse({'message': 'Token expired'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            user = Credentials.objects.filter(username=payload['username'],
+                                              email=payload['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            user_id = user.id
+            viewer_permission_level = user.permission
+            query = get_recently_viewed_query()
+            with connection.cursor() as cursor:
+                cursor.execute(query, [user_id, user_id, user_id,
+                                       viewer_permission_level])
+                columns = cursor.description
+                if not columns:
+                    return JsonResponse({'message': 'No videos found'},
+                                        status=status.HTTP_200_OK)
+                columns = [col[0] for col in columns]
+                rows = cursor.fetchall()
+                if not rows:
+                    return JsonResponse({'message': 'No videos found'},
+                                        status=status.HTTP_200_OK)
+                videos = [dict(zip(columns, row)) for row in rows]
+                for video in videos:
+                    thumbnail_location = video.get('thumbnail_location')
+                    if thumbnail_location:
+                        serial = video['serial']
+                        image_path = f"data/thumbnails/{serial}.jpg"
+                        try:
+                            with open(image_path, 'rb') as image_file:
+                                encoded_image = base64.b64encode(image_file.read(
+                                    )).decode('utf-8')
+                                video['image_url'] = f"data:image/jpeg;base64,{encoded_image}"
+                        except FileNotFoundError:
+                            logging.error(f"Image file not found: {image_path}")
+                        except Exception as e:
+                            logging.error(f"Error during image encoding: {str(e)}")
+            return JsonResponse({'videos': videos},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video retrieval: {str(e)}", exc_info=True)
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
 
 
 
@@ -294,7 +358,8 @@ def TEMPLATE(request):
             except jwt.ExpiredSignatureError:
                 return JsonResponse({'message': 'Token expired'},
                                     status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'], email=payload['email']).first()
+            user = Credentials.objects.filter(username=payload['username'],
+                                              email=payload['email']).first()
             if not user:
                 return JsonResponse({'message': 'User not found'},
                                     status=status.HTTP_404_NOT_FOUND)

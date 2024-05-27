@@ -68,6 +68,11 @@ function VideoPopup({ serial, onClose }) {
             <p>Total Rating Score: {video.video_rating}</p>
             <p>Description: {video.video_description}</p>
             <a href={`/player/?serial=${serial}`}>Watch Video</a>
+            <br />
+            {video.resume && (
+              <a href={`/player/?serial=${serial}&resume=true`}>Resume</a>
+            )}
+            <br />
           </div>
         </div>
       </div>

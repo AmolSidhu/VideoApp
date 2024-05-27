@@ -1,19 +1,3 @@
-"""
-URL configuration for core project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
 from django.contrib import admin
 from django.urls import path
 import videos.views as videos_views
@@ -36,12 +20,21 @@ urlpatterns = [
     path('video_data/<str:serial>/', videos_views.video_data, name='video_data'),
     path('get_genres/', videos_views.get_genres, name='get_genres'),
     path('get_video_by_genre/<str:genre>/', videos_views.get_video_by_genre, name='get_video_by_genre'),
+    path('recently_viewed/', videos_views.recently_viewed, name='recently_viewed'),
     
     #streaming paths
     path('stream/<str:serial>/<str:permission>/', stream_views.video_stream, name='video_stream'),
+    path('log_video_time/', stream_views.log_video_time, name='log_video_time'),
+    path('video_history/<str:serial>/', stream_views.video_history, name='video_history'),
+    path('update_playback_time/', stream_views.update_playback_time, name='update_playback_time'),
     
     #management paths
     path('import_identifier/', management_views.import_identifier_api, name='import_identifier'),
+    path('get_my_videos/', management_views.get_my_videos, name='get_my_videos'),
+    path('get_my_uploads/<int:page>/', management_views.get_my_uploads, name='get_my_uploads'),
+    path('get_video_record/<str:serial>/', management_views.get_video_record, name='get_video_record'),
+    path('update_video_record/<str:serial>/', management_views.update_video_record, name='update_video_record'),
+    path('delete_video_record/<str:serial>/', management_views.delete_video_record, name='delete_video_record'),
     
     #user paths
 ]

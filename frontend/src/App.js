@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 //pages import General
 import Home from "./pages/general/Home";
+import Profile from "./pages/general/Profile";
 
 //page import Auth
 import Login from "./pages/auth/Login";
@@ -15,9 +16,15 @@ import UploadVideo from "./pages/videos/UploadVideo";
 import VideoPage from "./pages/videos/VideoPage";
 import VideoRecommendations from "./pages/videos/VideoRecommendations";
 import ViewVideo from "./pages/videos/ViewVideo";
+import SearchResult from "./pages/videos/SearchResults";
 
 //pages import misc
 import NotFound from "./pages/misc/NotFound";
+
+//import management pages
+import ViewAllUploads from "./pages/management/ViewAllUploads";
+import EditVideo from "./pages/management/EditVideo";
+import ChangePassword from "./pages/management/ChangePassword";
 
 //testing pages delete later
 import Test from "./pages/misc/Test";
@@ -28,6 +35,7 @@ function App() {
       <Routes>
         <Route index element={<Home />} />
         <Route path="/home/" element={<Home />} />
+        <Route path="/profile/" element={<Profile />} />
 
         <Route path="/login/" element={<Login />} />
         <Route path="/register/" element={<Register />} />
@@ -37,8 +45,13 @@ function App() {
         <Route path="/video/" element={<VideoPage />} />
         <Route path="/recommendations/" element={<VideoRecommendations />} />
         <Route path="/player/" element={<ViewVideo />} />
+        <Route path="/search/v/" element={<SearchResult />} />
 
         <Route path="*" element={<NotFound />} />
+
+        <Route path="/edit/video/all/" element={<ViewAllUploads />} />
+        <Route path="/edit/video/" element={<EditVideo />} />
+        <Route path="/change/password/" element={<ChangePassword />} />
 
         <Route path="/test/" element={<Test />} />
       </Routes>

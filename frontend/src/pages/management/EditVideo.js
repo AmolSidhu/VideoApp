@@ -1,8 +1,8 @@
 import React, { useEffect } from "react";
 import MainNavbar from "../../Components/static/MainNavbar";
-import VideoPlayer from "../../Components/requests/VideoStream";
+import EditVideoRecord from "../../Components/forms/EditVideoRecord";
 
-const ViewVideo = () => {
+const EditVideo = () => {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -10,15 +10,14 @@ const ViewVideo = () => {
     } else {
       document.title = "Edit Video";
     }
-    document.title = "View";
   }, []);
   return (
     <div>
       <MainNavbar />
-      <h1>View Page</h1>
-      <VideoPlayer />
+      <h1>Edit Video</h1>
+      <EditVideoRecord />
     </div>
   );
 };
 
-export default ViewVideo;
+export default EditVideo;

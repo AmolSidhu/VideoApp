@@ -26,7 +26,6 @@ function GenreVideoList() {
 
         const data = await response.json();
         setGenres(data.genres.map((genre) => genre.genre));
-        // Fetch videos for each genre
         await Promise.all(
           data.genres.map((genre) => fetchVideosByGenre(genre.genre))
         );

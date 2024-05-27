@@ -23,12 +23,12 @@ class UploadVideoForm extends Component {
       thriller: false,
       description: "",
       imdbLink: "",
-      directors: "",
-      stars: "",
-      writers: "",
+      directors: [],
+      stars: [],
+      writers: [],
+      creators: [],
       criticRating: "",
       title: "",
-      creators: "",
     };
   }
 
@@ -98,12 +98,12 @@ class UploadVideoForm extends Component {
     formData.append("series", this.state.series);
     formData.append("description", this.state.description);
     formData.append("imdbLink", this.state.imdbLink);
-    formData.append("directors", this.state.directors);
-    formData.append("stars", this.state.stars);
-    formData.append("writers", this.state.writers);
+    formData.append("directors", JSON.stringify(this.state.directors));
+    formData.append("stars", JSON.stringify(this.state.stars));
+    formData.append("writers", JSON.stringify(this.state.writers));
+    formData.append("creators", JSON.stringify(this.state.creators));
     formData.append("criticRating", this.state.criticRating);
     formData.append("title", this.state.title);
-    formData.append("creators", this.state.creators);
 
     const token = localStorage.getItem("token");
     const url = `${server}/upload/`;
@@ -154,8 +154,35 @@ class UploadVideoForm extends Component {
     }
   };
 
+  handleAddPerson = (field) => {
+    this.setState((prevState) => ({
+      [field]: [...prevState[field], ""],
+    }));
+  };
+
+  handleRemovePerson = (field, index) => {
+    this.setState((prevState) => ({
+      [field]: prevState[field].filter((_, i) => i !== index),
+    }));
+  };
+
+  handlePersonChange = (field, index, value) => {
+    this.setState((prevState) => ({
+      [field]: prevState[field].map((item, i) => (i === index ? value : item)),
+    }));
+  };
+
   render() {
-    const { errorMessage, message, progress, customTag } = this.state;
+    const {
+      errorMessage,
+      message,
+      progress,
+      customTag,
+      directors,
+      stars,
+      writers,
+      creators,
+    } = this.state;
 
     return (
       <div>
@@ -245,35 +272,119 @@ class UploadVideoForm extends Component {
           </Form.Group>
           <Form.Group controlId="directors">
             <Form.Label>Directors:</Form.Label>
-            <Form.Control
-              type="text"
-              name="directors"
-              onChange={this.handleInputChange}
-            />
-          </Form.Group>
-          <Form.Group controlId="creators">
-            <Form.Label>Creators:</Form.Label>
-            <Form.Control
-              type="text"
-              name="creators"
-              onChange={this.handleInputChange}
-            />
+            {directors.map((director, index) => (
+              <div key={index} className="d-flex align-items-center mb-2">
+                <Form.Control
+                  type="text"
+                  value={director}
+                  onChange={(e) =>
+                    this.handlePersonChange("directors", index, e.target.value)
+                  }
+                />
+                <Button
+                  variant="danger"
+                  className="ml-2"
+                  onClick={() => this.handleRemovePerson("directors", index)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => this.handleAddPerson("directors")}
+              >
+                Add Director
+              </Button>
+            </div>
           </Form.Group>
           <Form.Group controlId="stars">
             <Form.Label>Stars:</Form.Label>
-            <Form.Control
-              type="text"
-              name="stars"
-              onChange={this.handleInputChange}
-            />
+            {stars.map((star, index) => (
+              <div key={index} className="d-flex align-items-center mb-2">
+                <Form.Control
+                  type="text"
+                  value={star}
+                  onChange={(e) =>
+                    this.handlePersonChange("stars", index, e.target.value)
+                  }
+                />
+                <Button
+                  variant="danger"
+                  className="ml-2"
+                  onClick={() => this.handleRemovePerson("stars", index)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => this.handleAddPerson("stars")}
+              >
+                Add Star
+              </Button>
+            </div>
           </Form.Group>
           <Form.Group controlId="writers">
             <Form.Label>Writers:</Form.Label>
-            <Form.Control
-              type="text"
-              name="writers"
-              onChange={this.handleInputChange}
-            />
+            {writers.map((writer, index) => (
+              <div key={index} className="d-flex align-items-center mb-2">
+                <Form.Control
+                  type="text"
+                  value={writer}
+                  onChange={(e) =>
+                    this.handlePersonChange("writers", index, e.target.value)
+                  }
+                />
+                <Button
+                  variant="danger"
+                  className="ml-2"
+                  onClick={() => this.handleRemovePerson("writers", index)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => this.handleAddPerson("writers")}
+              >
+                Add Writer
+              </Button>
+            </div>
+          </Form.Group>
+          <Form.Group controlId="creators">
+            <Form.Label>Creators:</Form.Label>
+            {creators.map((creator, index) => (
+              <div key={index} className="d-flex align-items-center mb-2">
+                <Form.Control
+                  type="text"
+                  value={creator}
+                  onChange={(e) =>
+                    this.handlePersonChange("creators", index, e.target.value)
+                  }
+                />
+                <Button
+                  variant="danger"
+                  className="ml-2"
+                  onClick={() => this.handleRemovePerson("creators", index)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <div>
+              <Button
+                variant="primary"
+                onClick={() => this.handleAddPerson("creators")}
+              >
+                Add Creator
+              </Button>
+            </div>
           </Form.Group>
           <Form.Group controlId="private">
             <Form.Check

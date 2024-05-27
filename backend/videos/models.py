@@ -107,6 +107,7 @@ class VideoComments(models.Model):
 class VideoHistory(models.Model):
     video_serial = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='history')
     user = models.ForeignKey('user.Credentials', on_delete=models.CASCADE, related_name='history')
+    video_stop_time = models.FloatField(default=0)
     timestamp = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):

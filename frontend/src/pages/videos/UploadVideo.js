@@ -4,6 +4,12 @@ import UploadVideoForm from "../../Components/forms/UploadVideoForm";
 
 const UploadVideo = () => {
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login/";
+    } else {
+      document.title = "Edit Video";
+    }
     document.title = "Upload Video";
   }, []);
   return (
