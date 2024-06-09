@@ -13,6 +13,8 @@ class Credentials(AbstractUser):
     permission = models.IntegerField(default=2)
     first_name = models.CharField(max_length=100, default='')
     last_name = models.CharField(max_length=100, default='')
+    user_status = models.CharField(max_length=100, default='Active')
+    user_status_updated_date = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)

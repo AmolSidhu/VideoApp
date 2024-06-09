@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view
 from rest_framework import status
 from django.http import JsonResponse
+from datetime import datetime
 from secrets import token_hex
 from PIL import Image
 
@@ -12,7 +13,7 @@ import jwt
 import os
 
 from user.models import Credentials
-from videos.models import Video
+from videos.models import Video, VideoComments, VideoHistory
 from core.serializer import VideoSerializer
 
 logger = logging.getLogger(__name__)
@@ -272,6 +273,107 @@ def change_password(request):
                                     status=status.HTTP_400_BAD_REQUEST)
             user.password = hashlib.sha256(data['new_password'].encode()).hexdigest()
             user.save()
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PATCH'])
+def change_email(request):
+    try:
+        if request.method == 'PATCH':
+            token = request.headers.get('Authorization')
+            if not token:
+                return JsonResponse({'message': 'Invalid or missing token'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            try:
+                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return JsonResponse({'message': 'Token expired'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            user = Credentials.objects.filter(username=payload['username'],
+                                              email=payload['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            data = request.data
+            new_email = data['new_email']
+            valid_email = Credentials.objects.filter(email=new_email).first()
+            if valid_email:
+                return JsonResponse({'message': 'Email already in use'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            else:
+                user.email = new_email
+                user.save()
+            return JsonResponse({'message': 'Email changed successfully'},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+@api_view(['PATCH'])
+def change_username(request):
+    try:
+        if request.method == 'PATCH':
+            token = request.headers.get('Authorization')
+            if not token:
+                return JsonResponse({'message': 'Invalid or missing token'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            try:
+                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return JsonResponse({'message': 'Token expired'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            user = Credentials.objects.filter(username=payload['username'],
+                                              email=payload['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            data = request.data
+            new_username = data['new_username']
+            valid_username = Credentials.objects.filter(username=new_username).first()
+            if valid_username:
+                return JsonResponse({'message': 'Username already in use'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            else:
+                user.username = new_username
+                user.save()
+        return JsonResponse({'message': 'Username changed successfully'},
+                            status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PATCH'])
+def delete_account(request):
+    try:
+        if request.method == 'PATCH':
+            token = request.headers.get('Authorization')
+            if not token:
+                return JsonResponse({'message': 'Invalid or missing token'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            try:
+                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return JsonResponse({'message': 'Token expired'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            user = Credentials.objects.filter(username=payload['username'],
+                                              email=payload['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            if hashlib.sha256(request.data['password'].encode()).hexdigest() != user.password:
+                return JsonResponse({'message': 'Incorrect password'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            if request.data['confirmation'] != 'DELETE':
+                return JsonResponse({'message': 'Confirmation does not match'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            user.user_status = 'Deleted'
+            user.user_status_updated_date = datetime.now()
+            return JsonResponse({'message': 'Account marked for deletion'},
+                                status=status.HTTP_200_OK)
     except Exception as e:
         logging.error(f"Error during video upload: {str(e)}")
         return JsonResponse({'message': 'Internal server error'},

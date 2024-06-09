@@ -31,6 +31,7 @@ class Video(models.Model):
     uploaded_date = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
     description = models.TextField(default="")
+    genre_updated = models.BooleanField(default=True)
     
     def __str__(self):
         return self.video_name + " - " + str(self.rating)

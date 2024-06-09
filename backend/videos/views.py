@@ -12,7 +12,7 @@ import json
 import base64
 
 from user.models import Credentials
-from .queries import get_video_list_query, get_video_by_genre_query, get_recently_viewed_query
+from .queries import get_video_list_query, get_video_by_genre_query, get_recently_viewed_query, get_video_search_query
 from .models import Video, TempVideo, VideoGenre, VideoHistory
 from core.serializer import VideoSerializer, TempVideoSerializer
 
@@ -107,6 +107,7 @@ def upload_video(request):
                 title=request.data.get('title', ''),
                 uploaded_date=timezone.now(),
                 video_location=temp_videos_dir,
+                thumbnail_location=thumbnail_dir,
             )
             serializer = TempVideoSerializer(video)
             return JsonResponse({'message': "Video Uploaded \nYou can check the processing status of your video in the 'My Videos' section"},
@@ -137,27 +138,24 @@ def get_videos(request):
                                     status=status.HTTP_404_NOT_FOUND)
             user_id = user.id
             viewer_permission_level = user.permission
-            with open('directory.json', 'r') as f:
-                directory = json.load(f)
-            query = get_video_list_query(user_id, viewer_permission_level)
-            directory_path =  ''#directory['thumbnail_dir']
             with connection.cursor() as cursor:
-                cursor.execute(query, [directory_path, user_id, viewer_permission_level])
+                cursor.execute(get_video_list_query(), [user_id, viewer_permission_level])
                 columns = [col[0] for col in cursor.description]
                 videos = [dict(zip(columns, row)) for row in cursor.fetchall()]
             for video in videos:
-                thumbnail_location = video.get('thumbnail_location')
-                if thumbnail_location:
-                    serial = video['serial']
-                    image_path = f"data/thumbnails/{serial}.jpg"
-                    try:
-                        with open(image_path, 'rb') as image_file:
-                            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
-                            video['image_url'] = f"data:image/jpeg;base64,{encoded_image}"
-                    except FileNotFoundError:
-                        logging.error(f"Image file not found: {image_path}")
-                    except Exception as e:
-                        logging.error(f"Error during image encoding: {str(e)}")
+                thumbnail_location = video['thumbnail_location']
+                image_path = r"{}{}.jpg".format(thumbnail_location, video['serial'])
+                try:
+                    with open(image_path, 'rb') as image_file:
+                        encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+                        video['image_url'] = f"data:image/jpeg;base64,{encoded_image}"
+                except FileNotFoundError:
+                    logging.error(f"Image file not found: {image_path}")
+                    print('issue')
+                    video['image_url'] = ''
+                except Exception as e:
+                    logging.error(f"Error during image encoding: {str(e)}")
+                    video['image_url'] = ''
             return JsonResponse({'videos': videos}, status=status.HTTP_200_OK)
     except Exception as e:
         logging.error(f"Error during video retrieval: {str(e)}")
@@ -262,8 +260,7 @@ def get_video_by_genre(request, genre):
                 videos = [dict(zip(columns, row)) for row in rows]
             for video in videos:
                 thumbnail_location = video['thumbnail_location']
-                thumbnail_location = thumbnail_location.rstrip('/')
-                image_path = f"{thumbnail_location}/{video['serial']}.jpg"
+                image_path = r"{}{}.jpg".format(thumbnail_location, video['serial'])
                 try:
                     with open(image_path, 'rb') as image_file:
                         encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -305,38 +302,83 @@ def recently_viewed(request):
             with connection.cursor() as cursor:
                 cursor.execute(query, [user_id, user_id, user_id,
                                        viewer_permission_level])
-                columns = cursor.description
-                if not columns:
-                    return JsonResponse({'message': 'No videos found'},
-                                        status=status.HTTP_200_OK)
-                columns = [col[0] for col in columns]
+                columns = [col[0] for col in cursor.description]
                 rows = cursor.fetchall()
-                if not rows:
-                    return JsonResponse({'message': 'No videos found'},
-                                        status=status.HTTP_200_OK)
-                videos = [dict(zip(columns, row)) for row in rows]
-                for video in videos:
-                    thumbnail_location = video.get('thumbnail_location')
-                    if thumbnail_location:
-                        serial = video['serial']
-                        image_path = f"data/thumbnails/{serial}.jpg"
-                        try:
-                            with open(image_path, 'rb') as image_file:
-                                encoded_image = base64.b64encode(image_file.read(
-                                    )).decode('utf-8')
-                                video['image_url'] = f"data:image/jpeg;base64,{encoded_image}"
-                        except FileNotFoundError:
-                            logging.error(f"Image file not found: {image_path}")
-                        except Exception as e:
-                            logging.error(f"Error during image encoding: {str(e)}")
-            return JsonResponse({'videos': videos},
-                                status=status.HTTP_200_OK)
+                videos = []
+                if rows:
+                    videos = [dict(zip(columns, row)) for row in rows]
+                    for video in videos:
+                        thumbnail_location = video.get('thumbnail_location')
+                        if thumbnail_location:
+                            serial = video['serial']
+                            image_path = r"{}{}.jpg".format(thumbnail_location, serial)
+                            try:
+                                with open(image_path, 'rb') as image_file:
+                                    encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+                                    video['image_url'] = f"data:image/jpeg;base64,{encoded_image}"
+                            except FileNotFoundError:
+                                logging.error(f"Image file not found: {image_path}")
+                                video['image_url'] = ''
+                            except Exception as e:
+                                logging.error(f"Error during image encoding: {str(e)}")
+                                video['image_url'] = ''
+                return JsonResponse({'videos': videos}, status=status.HTTP_200_OK)
     except Exception as e:
-        logging.error(f"Error during video retrieval: {str(e)}", exc_info=True)
+        logging.error(f"Error during video retrieval: {str(e)}")
         return JsonResponse({'message': 'Internal server error'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['GET'])
+def get_video_search(request, query):
+    try:
+        if request.method == 'GET':
+            token = request.headers.get('Authorization')
+            if not token:
+                return JsonResponse({'message': 'Invalid or missing token'}, status=status.HTTP_403_FORBIDDEN)
+            try:
+                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return JsonResponse({'message': 'Token expired'}, status=status.HTTP_403_FORBIDDEN)
+            
+            user = Credentials.objects.filter(username=payload['username'], email=payload['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+            user_id = user.id
+            viewer_permission_level = user.permission
 
+            sql_query = get_video_search_query()
+            with connection.cursor() as cursor:
+                cursor.execute(sql_query, [
+                    "data/thumbnails/",
+                    user_id,
+                    f"%{query}%",
+                    f"%{query}%",
+                    viewer_permission_level
+                ])
+                columns = [col[0] for col in cursor.description]
+                videos = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+            for video in videos:
+                thumbnail_location = video.get('thumbnail_location')
+                if thumbnail_location:
+                    serial = video['serial']
+                    image_path = f"data/thumbnails/{serial}.jpg"
+                    try:
+                        with open(image_path, 'rb') as image_file:
+                            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+                            video['image_url'] = f"data:image/jpeg;base64,{encoded_image}"
+                    except FileNotFoundError:
+                        logging.error(f"Image file not found: {image_path}")
+                    except Exception as e:
+                        logging.error(f"Error during image encoding: {str(e)}")
+
+            return JsonResponse({'videos': videos},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video retrieval: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 

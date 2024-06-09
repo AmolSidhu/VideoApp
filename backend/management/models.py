@@ -21,3 +21,16 @@ class IdentifierTempTable(models.Model):
         db_table = 'identifiers_temp_table'
         verbose_name = 'Identifier Temp Table'
         verbose_name_plural = 'Identifier Temp Tables'
+
+class TempGenreTable(models.Model):
+    genre = models.CharField(max_length=100)
+    number_of_public_records = models.IntegerField(default=0)
+    custom = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"Genre: {self.genre}, Number of Public Records: {self.number_of_public_records}, Custom: {self.custom}"
+        
+    class Meta:
+        db_table = 'genre_temp_table'
+        verbose_name = 'Genre Temp Table'
+        verbose_name_plural = 'Genre Temp Tables'

@@ -21,6 +21,7 @@ urlpatterns = [
     path('get_genres/', videos_views.get_genres, name='get_genres'),
     path('get_video_by_genre/<str:genre>/', videos_views.get_video_by_genre, name='get_video_by_genre'),
     path('recently_viewed/', videos_views.recently_viewed, name='recently_viewed'),
+    path('video/search/<str:query>/', videos_views.get_video_search, name='get_video_search'),
     
     #streaming paths
     path('stream/<str:serial>/<str:permission>/', stream_views.video_stream, name='video_stream'),
@@ -35,6 +36,12 @@ urlpatterns = [
     path('get_video_record/<str:serial>/', management_views.get_video_record, name='get_video_record'),
     path('update_video_record/<str:serial>/', management_views.update_video_record, name='update_video_record'),
     path('delete_video_record/<str:serial>/', management_views.delete_video_record, name='delete_video_record'),
+    path('change_my_password/', management_views.change_password, name='change_password'),
+    path('change_my_email/', management_views.change_email, name='change_email'),
+    path('change_my_username/', management_views.change_username, name='change_username'),
+    path('delete_my_account/', management_views.delete_account, name='delete_account'),
     
     #user paths
+    path('change_password/', user_views.change_password, name='change_password'),
+    path('forgot_password/', user_views.forgot_password, name='forgot_password'),
 ]

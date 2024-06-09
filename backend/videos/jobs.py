@@ -508,6 +508,7 @@ def completed_processing():
                 imdb_link=video.imdb_link,
                 imdb_rating=video.imdb_rating,
                 video_location=video.video_location,
+                thumbnail_location=video.thumbnail_location
             )
             
             record = VideoSerializer(video_instance)
@@ -621,6 +622,7 @@ def corrupt_video():
                 writers=video.writers,
                 imdb_link=video.imdb_link,
                 imdb_rating=video.imdb_rating,
+                thumbnail_location=video.thumbnail_location
             )
             
             record = VideoSerializer(video_instance)

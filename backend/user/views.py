@@ -1,5 +1,8 @@
+from secrets import token_urlsafe
 from django.http import JsonResponse
+from django.core.mail import send_mail
 from django.db.models import Q
+from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -39,6 +42,11 @@ def register(request):
                         verification_code=1234
                     )
                     new_user.save()
+                    subject = 'Verification Code'
+                    message = f'Your verification code is: {new_user.verification_code}'
+                    email_from = settings.EMAIL_HOST_USER
+                    recipient_list = [new_user.email]
+                    send_mail(subject, message, email_from, recipient_list)
                     response = JsonResponse({'msg': 'User registered successfully'},
                                             status=status.HTTP_200_OK)
         return response
@@ -111,3 +119,62 @@ def logout(request):
         logging.error(f"Error during logout: {str(e)}")
         return Response({'message': 'Internal server error'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PATCH'])
+def change_password(request):
+    try:
+        if request.method == 'PATCH':
+            token = request.headers.get('Authorization')
+            if not token:
+                return JsonResponse({'message': 'Invalid or missing token'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            try:
+                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                return JsonResponse({'message': 'Token expired'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            user = Credentials.objects.filter(username=payload['username'],
+                                              email=payload['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            old_password = hashlib.sha256(request.data['oldPassword'].encode()).hexdigest()
+            if old_password != user.password:
+                return JsonResponse({'message': 'Incorrect old password'},
+                                    status=status.HTTP_401_UNAUTHORIZED)
+            if request.data['newPassword'] != request.data['confirmPassword']:
+                return JsonResponse({'message': 'Passwords do not match'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            new_password = hashlib.sha256(request.data['newPassword'].encode()).hexdigest()
+            user.password = new_password
+            user.save()
+            return JsonResponse({'message': 'Password changed successfully'},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['PATCH'])
+def forgot_password(request):
+    try:
+        if request.method == 'PATCH':
+            user = Credentials.objects.filter(email=request.data['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            new_password = token_urlsafe(8)  
+            new_password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+            user.password = new_password_hash
+            user.save()
+            subject = 'Password Reset'
+            message = f'Your new password is: {new_password}, feel free to login to your account. You can change your password from the my profile section.'
+            email_from = settings.EMAIL_HOST_USER
+            recipient_list = [user.email]
+            send_mail(subject, message, email_from, recipient_list) 
+            return JsonResponse({'message': 'Password reset successfully'},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)

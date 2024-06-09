@@ -1,11 +1,12 @@
 from apscheduler.schedulers.background import BackgroundScheduler
+from django.db import transaction
 import json
 import os
 import bs4 as bs
 import requests
 import re
 
-from .models import Identifier, IdentifierTempTable
+from .models import Identifier, IdentifierTempTable, TempGenreTable
 from videos.models import VideoGenre, Video
 from functions.function import normalize_unicode, json_format
 from core.serializer import IdentifierSerializer, VideoGenresSerializer
@@ -308,7 +309,52 @@ def start_json_record():
     scheduler.add_job(create_json_record, 'interval', minutes=10)
     scheduler.start()
 
+
 def check_existing_genres():
+    TempGenreTable.objects.all().delete()
+    Video.objects.filter(genre_updated=True).update(genre_updated=False)
+    known_genres = ['Action', 'Adventure', 'Animation', 'Biography', 'Comedy',
+                    'Crime', 'Documentary', 'Drama', 'Family', 'Fantasy',
+                    'Film-Noir', 'History', 'Horror', 'Music', 'Musical',
+                    'Mystery', 'Romance', 'Sci-Fi', 'Sport', 'Thriller',
+                    'War', 'Western']
+    finished = False
+    while not finished:
+        video_record = Video.objects.filter(private=False, genre_updated=False).first()
+        if video_record is None:
+            finished = True
+            break
+        tags = video_record.tags if isinstance(video_record.tags, list) else []
+        for tag in tags:
+            existing_record = TempGenreTable.objects.filter(genre=tag).first()
+            if existing_record:
+                existing_record.number_of_public_records += 1
+                existing_record.save()
+            else:
+                custom = tag not in known_genres
+                TempGenreTable.objects.create(
+                    genre=tag,
+                    number_of_public_records=1,
+                    custom=custom
+                )
+        video_record.genre_updated = True
+        video_record.save()
+    VideoGenre.objects.all().delete()
+    temp_data = TempGenreTable.objects.all()
+    for data in temp_data:
+        VideoGenre.objects.create(
+            genre=data.genre,
+            number_of_public_records=data.number_of_public_records,
+            custom=data.custom
+        )
+        data.delete()
+
+def start_genre_check():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(check_existing_genres, 'interval', minutes=10)
+    scheduler.start()
+
+def genre_test():
     VideoGenre.objects.all().delete()
 
     genres = Video.objects.filter(private=False).all()
@@ -333,9 +379,4 @@ def check_existing_genres():
     for genre_data in genre_dict.values():
         added_genre = VideoGenre.objects.create(**genre_data)
         serializer = VideoGenresSerializer(added_genre)
-
-def start_genre_check():
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(check_existing_genres, 'interval', minutes=1)
-    scheduler.start()
     
