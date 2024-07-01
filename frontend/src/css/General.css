@@ -6,4 +6,31 @@
     margin-left: 20px;
     margin-right: 20px;
   }
+
+  .app-container {
+    text-align: center;
+    padding: 20px;
+  }
   
+  .toggle-buttons {
+    margin-bottom: 20px;
+  }
+  
+  .toggle-buttons button {
+    margin: 0 10px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  
+  .toggle-buttons .active {
+    background-color: #007bff;
+    color: white;
+    border: none;
+  }
+  
+  .form-container {
+    border: 1px solid #ccc;
+    padding: 20px;
+    border-radius: 5px;
+  }

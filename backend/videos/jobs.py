@@ -13,8 +13,8 @@ import os
 import re
 import av
 
-from core.serializer import VideoSerializer, IdentifierSerializer
-from .models import Video, TempVideo
+from core.serializer import VideoSerializer, IdentifierSerializer, SeriesVideoSerializer, NonSeriesVideoSerializer
+from .models import Video, TempVideo, NonSeriesVideo, SeriesVideo
 from management.models import Identifier
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def check_corruption_temp():
 
     for video in videos:
         try:
-            check = av.open(f'{video.video_location}{video.serial}.mp4')
+            check = av.open(f'{video.temp_video_location}{video.serial}.mp4')
             if not check or not check.streams.video:
                 video.current_status = "Corrupted File"
                 video.save()
@@ -56,16 +56,18 @@ def convert_video():
     with open('directory.json', 'r') as f:
         directory = json.load(f)
     
+    video_location = directory['video_dir']
+    
     videos = TempVideo.objects.filter(format_conversion=False,
                                        current_status="Initial Corruption Checked")
     
     for video in videos:
         try:
-            output_path = os.path.join(directory['video_dir'], f'{video.serial}.mp4')
+            output_path = os.path.join(video_location, f'{video.serial}.mp4')
             command = [
                 'ffmpeg',
                 '-hwaccel', 'cuda',
-                '-i', os.path.join(video.video_location, f'{video.serial}.mp4'),
+                '-i', os.path.join(video.temp_video_location, f'{video.serial}.mp4'),
                 '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '23',
@@ -80,7 +82,7 @@ def convert_video():
             video.format_conversion = True
             video.current_status = "Format Converted"
             video.last_updated = timezone.now()
-            video.video_location = directory['video_dir']
+            video.video_location = video_location
             video.save()
             
         except Exception as e:
@@ -133,8 +135,8 @@ def start_corruption_data():
 
 def imdb_data():
     videos = TempVideo.objects.filter(imdb_added=False,
-                                       current_status="Data Corruption Checked")
-    
+                                      current_status="Data Corruption Checked")
+
     for video in videos:
         if video.imdb_link == '':
             video.current_status = "IMDB Passed"
@@ -142,6 +144,44 @@ def imdb_data():
             video.imdb_link_failed = True
             video.save()
             continue
+
+        if video.series:
+            existing_record = Video.objects.filter(id=video.master_serial).first()
+            if existing_record:
+                video.current_status = "IMDB Passed"
+                video.imdb_added = True
+                video.image_added = True
+                video.title = existing_record.title
+                video.description = existing_record.description
+                video.tags = existing_record.tags
+                video.imdb_rating = existing_record.imdb_rating
+                video.main_tag = existing_record.main_tag
+                video.directors = existing_record.directors
+                video.writers = existing_record.writers
+                video.stars = existing_record.stars
+                video.creators = existing_record.creators
+                video.save()
+                continue
+            
+            temp_record = TempVideo.objects.filter(master_serial=video.master_serial).first()
+            if temp_record and temp_record.imdb_added:
+                video.current_status = "IMDB Passed"
+                video.imdb_added = True
+                video.image_added = True
+                video.title = temp_record.title
+                video.description = temp_record.description
+                video.tags = temp_record.tags
+                video.imdb_rating = temp_record.imdb_rating
+                video.main_tag = temp_record.main_tag
+                video.directors = temp_record.directors
+                video.writers = temp_record.writers
+                video.stars = temp_record.stars
+                video.creators = temp_record.creators
+                video.save()
+                continue
+            else:
+                pass
+
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,like Gecko) Chrome/58.0.3029.110 Safari/537.3'
@@ -181,12 +221,14 @@ def imdb_data():
                 rating = soup.find(attrs={'data-testid': 'hero-rating-bar__aggregate-rating__score'}).text.strip().replace('/10', '')
             except AttributeError:
                 rating = 0.0
-            
+                
             try:
                 thumbnail_url = soup.find(attrs={'data-testid': 'hero-media__poster'}).find('img')['src']
                 thumbnail_response = requests.get(thumbnail_url, headers=headers)
-                thumbnail_filename = os.path.basename(thumbnail_url).replace(':', '_')
-                thumbnail_filename = video.serial
+                if video.series == True:
+                    thumbnail_filename = video.master_serial
+                else:
+                    thumbnail_filename = video.serial
                 with open(f'{video.thumbnail_location}{thumbnail_filename}.jpg', 'wb') as f:
                     f.write(thumbnail_response.content)
             except Exception as e:
@@ -404,19 +446,26 @@ def visual_profile():
     
     for video in videos:
         try:
+            filename = video.master_serial if video.series else video.serial
+            if video.series:
+                master_record = Video.objects.filter(id=video.master_serial).first()
+                if master_record:
+                    filename = master_record.serial
+            
             cap = cv2.VideoCapture(f'{video.video_location}{video.serial}.mp4')
             if not cap.isOpened():
-                logger.error(f"Failed to open video file {video.video_location}")
+                logger.error(f"Failed to open video file {video.video_location}{filename}.mp4")
                 continue
             
             total_saturation = 0
             frame_count = 0
-            path = f'{video.thumbnail_location}{video.serial}.jpg'
-            if path == None or video.imdb_link_failed == True or video.image_added == False:
+            path = f'{video.thumbnail_location}{filename}.jpg'
             
+            if not os.path.exists(path) or video.imdb_link_failed or not video.image_added:
                 total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
                 target_frame = int(total_frames * 0.1)
-                thumbnail_path = f'{video.thumbnail_location}{video.serial}.jpg'
+                thumbnail_path = f'{video.thumbnail_location}{filename}.jpg'
+                
                 ret, frame = cap.read()
                 if not ret:
                     logger.error("Failed to read frame")
@@ -425,6 +474,7 @@ def visual_profile():
                 cv2.imwrite(thumbnail_path, frame)
                 video.thumbnail_location = thumbnail_path
                 video.save()
+                
                 cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
             
             ret, frame = cap.read()
@@ -437,10 +487,7 @@ def visual_profile():
             total_saturation += saturation
             frame_count += 1
             
-            if frame_count == 0:
-                average_saturation = 0
-            else:
-                average_saturation = total_saturation / frame_count
+            average_saturation = total_saturation / frame_count if frame_count > 0 else 0
             
             visual_profile_data = {
                 'duration': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS) if cap.get(cv2.CAP_PROP_FPS) != 0 else 0,
@@ -456,17 +503,13 @@ def visual_profile():
             video.save()
             
         except Exception as e:
-            logger.error(f"Error during visual profile calculation for video {video.serial}: {str(e)}")
+            logger.error(f"Error during visual profile calculation for video {filename}: {str(e)}")
             
             if video.failed_attempts >= 3:
-                video.failed_attempts += 1
                 video.current_status = "Failed to Process"
-            else:
-                video.failed_attempts += 1
+            video.failed_attempts += 1
             
             video.save()
-
-
 
 def start_visual_profile():
     scheduler = BackgroundScheduler()
@@ -474,59 +517,109 @@ def start_visual_profile():
     scheduler.start()
 
 def completed_processing():
-    videos = TempVideo.objects.filter(visual_data_added=True, audio_data_added=True, current_status="Visual Data Added")
-    
-    with open('directory.json', 'r') as f:
-        directory = json.load(f)
-    
-    for video in videos:
-        try:
-            video_instance = Video.objects.create(
-                video_name=video.video_name,
-                title=video.title,
-                main_tag=video.main_tag,
-                tags=video.tags,
-                serial=video.serial,
-                permission=video.permission,
-                series=video.series,
-                private=video.private,
-                uploaded_by=video.uploaded_by,
-                total_rating_score=video.total_rating_score,
-                total_ratings=video.total_ratings,
-                visual_profile=video.visual_profile,
-                audio_profile=video.audio_profile,
-                visual_details=video.visual_details,
-                audio_details=video.audio_details,
-                current_status="Processing Completed",
-                uploaded_date=video.uploaded_date,
-                last_updated=video.last_updated,
-                description=video.description,
-                directors=video.directors,
-                stars=video.stars,
-                writers=video.writers,
-                creators=video.creators,
-                imdb_link=video.imdb_link,
-                imdb_rating=video.imdb_rating,
-                video_location=video.video_location,
-                thumbnail_location=video.thumbnail_location
-            )
-            
-            record = VideoSerializer(video_instance)
-            
-            os.remove(f'{directory['temp_videos_dir']}{video.serial}.mp4')
-            
-            video.delete()
-            
-        except Exception as e:
-            logger.error(f"Error during video {video.serial} processing completion: {str(e)}")
-            
-            if video.failed_attempts >= 3:
-                video.failed_attempts += 1
-                video.current_status = "Failed to Process"
-            else:
-                video.failed_attempts += 1
-            
-            video.save()
+    try:
+        videos = TempVideo.objects.filter(
+            corruption_check_temp=True,
+            format_conversion=True,
+            corruption_check_data=True,
+            imdb_added=True,
+            image_added=True,
+            visual_data_added=True,
+            audio_data_added=True,
+            upload_success=True,
+            current_status="Visual Data Added"
+        )
+        
+        for video in videos:
+            try:
+                skip_video_instance_creation = False
+                existing_series_record = None
+                if video.series:
+                    existing_series_record = Video.objects.filter(id=video.master_serial).first()
+                if video.existing_series or existing_series_record:
+                    if existing_series_record:
+                        existing_series_record.update_series = False
+                        existing_series_record.save()
+                    skip_video_instance_creation = True
+                
+                video_serial = video.serial
+                if video.series:
+                    video_serial = video.master_serial
+                
+                series_update = video.series
+                
+                if not skip_video_instance_creation or existing_series_record is None:
+                    video_instance = Video.objects.create(
+                        serial=video_serial,
+                        title=video.title,
+                        series=video.series,
+                        imdb_link=video.imdb_link,
+                        imdb_rating=video.imdb_rating,
+                        main_tag=video.main_tag,
+                        tags=video.tags,
+                        directors=video.directors,
+                        stars=video.stars,
+                        writers=video.writers,
+                        creators=video.creators,
+                        permission=video.permission,
+                        private=video.private,
+                        uploaded_by=video.uploaded_by,
+                        uploaded_date=video.uploaded_date,
+                        last_updated=video.last_updated,
+                        description=video.description,
+                        current_status="Processing Completed",
+                        update_series=series_update,
+                    )
+                    record = VideoSerializer(video_instance)
+                else:
+                    video_instance = existing_series_record
+                
+                if video_instance is None:
+                    raise ValueError("video_instance is None, cannot proceed with SeriesVideo or NonSeriesVideo creation.")
+                
+                if video.series:
+                    series_instance = SeriesVideo.objects.create(
+                        batch_instance=video_instance,
+                        video_serial=video.serial,
+                        season=video.season,
+                        episode=video.episode,
+                        video_name=video.video_name,
+                        video_location=video.video_location,
+                        thumbnail_location=video.thumbnail_location,
+                        visual_profile=video.visual_profile,
+                        audio_profile=video.audio_profile,
+                        visual_details=video.visual_details,
+                        audio_details=video.audio_details,
+                        current_status="Processing Completed",
+                    )
+                    record = SeriesVideoSerializer(series_instance)
+                else:
+                    non_series_instance = NonSeriesVideo.objects.create(
+                        video_instance=video_instance,
+                        video_serial=video.serial,
+                        video_name=video.video_name,
+                        video_location=video.video_location,
+                        thumbnail_location=video.thumbnail_location,
+                        visual_profile=video.visual_profile,
+                        audio_profile=video.audio_profile,
+                        visual_details=video.visual_details,
+                        audio_details=video.audio_details,
+                        current_status="Processing Completed",
+                    )
+                    record = NonSeriesVideoSerializer(non_series_instance)
+                
+                os.remove(f'{video.temp_video_location}{video.serial}.mp4')
+                video.delete()
+                
+            except Exception as e:
+                logger.error(f'Error during video {video.serial} processing: {e}')
+                
+                if video.failed_attempts >= 3:
+                    video.current_status = "Failed to Process"
+                    video.failed_attempts += 1
+                    video.save()
+    except Exception as e:
+        logger.error(f'Error in completed_processing function: {e}')
 
 def start_processing_completion():
     scheduler = BackgroundScheduler()
@@ -538,37 +631,39 @@ def failed_processing():
     
     for video in videos:
         try:
-            video_instance = Video.objects.create(
-                video_name=video.video_name,
-                video_location=video.video_location,
-                main_tag=video.main_tag,
-                tags=video.tags,
-                serial=video.serial,
-                permission=video.permission,
-                series=video.series,
-                private=video.private,
-                uploaded_by=video.uploaded_by,
-                total_rating_score=video.total_rating_score,
-                total_ratings=video.total_ratings,
-                visual_profile=video.visual_profile,
-                audio_profile=video.audio_profile,
-                visual_details=video.visual_details,
-                audio_details=video.audio_details,
-                current_status="Failed Processing",
-                uploaded_date=video.uploaded_date,
-                last_updated=video.last_updated,
-                description=video.description,
-                directors=video.directors,
-                stars=video.stars,
-                writers=video.writers,
-                creators=video.creators,
-                imdb_link=video.imdb_link,
-                imdb_rating=video.imdb_rating,
-            )
+            if video.series:
+                series_record = SeriesVideo.objects.create(
+                    batch_instance=video.master_serial,
+                    video_serial=video.serial,
+                    season=video.season,
+                    episode=video.episode,
+                    video_name=video.video_name,
+                    video_location=video.video_location,
+                    thumbnail_location=video.thumbnail_location,
+                    visual_profile=video.visual_profile,
+                    audio_profile=video.audio_profile,
+                    visual_details=video.visual_details,
+                    audio_details=video.audio_details,
+                    current_status="Failed to Process"
+                )
+            record = SeriesVideoSerializer(series_record)
             
-            record = VideoSerializer(video_instance)
+            if not video.series:
+                non_series_record = NonSeriesVideo.objects.create(
+                    video_instance=video.master_serial,
+                    video_serial=video.serial,
+                    video_name=video.video_name,
+                    video_location=video.video_location,
+                    thumbnail_location=video.thumbnail_location,
+                    visual_profile=video.visual_profile,
+                    audio_profile=video.audio_profile,
+                    visual_details=video.visual_details,
+                    audio_details=video.audio_details,
+                    current_status="Failed to Process"
+                )
+            record = NonSeriesVideoSerializer(non_series_record)
             
-            os.remove(f'{video.video_location}{video.serial}.mp4')
+            os.remove(f'{video.temp_video_location}{video.serial}.mp4')
             
             video.delete()
             
@@ -591,46 +686,41 @@ def start_failed_processing():
 def corrupt_video():
     videos = TempVideo.objects.filter(current_status="Corrupted File")
     
-    with open('directory.json', 'r') as f:
-        directory = json.load(f)
-    
     for video in videos:
         try:
-            video_instance = Video.objects.create(
-                video_name=video.video_name,
-                video_location=video.video_location,
-                main_tag=video.main_tag,
-                tags=video.tags,
-                serial=video.serial,
-                permission=video.permission,
-                series=video.series,
-                private=video.private,
-                uploaded_by=video.uploaded_by,
-                total_rating_score=video.total_rating_score,
-                total_ratings=video.total_ratings,
-                visual_profile=video.visual_profile,
-                audio_profile=video.audio_profile,
-                visual_details=video.visual_details,
-                audio_details=video.audio_details,
-                current_status="Failed Processing",
-                uploaded_date=video.uploaded_date,
-                last_updated=video.last_updated,
-                description=video.description,
-                directors=video.directors,
-                stars=video.stars,
-                creators=video.creators,
-                writers=video.writers,
-                imdb_link=video.imdb_link,
-                imdb_rating=video.imdb_rating,
-                thumbnail_location=video.thumbnail_location
-            )
+            if video.series:
+                series_record = SeriesVideo.objects.create(
+                    batch_instance=video.master_serial,
+                    video_serial=video.serial,
+                    season=video.season,
+                    episode=video.episode,
+                    video_name=video.video_name,
+                    video_location=video.video_location,
+                    thumbnail_location=video.thumbnail_location,
+                    visual_profile=video.visual_profile,
+                    audio_profile=video.audio_profile,
+                    visual_details=video.visual_details,
+                    audio_details=video.audio_details,
+                    current_status="Failed to Process"
+                )
+            record = SeriesVideoSerializer(series_record)
             
-            record = VideoSerializer(video_instance)
+            if not video.series:
+                non_series_record = NonSeriesVideo.objects.create(
+                    video_instance=video.master_serial,
+                    video_serial=video.serial,
+                    video_name=video.video_name,
+                    video_location=video.video_location,
+                    thumbnail_location=video.thumbnail_location,
+                    visual_profile=video.visual_profile,
+                    audio_profile=video.audio_profile,
+                    visual_details=video.visual_details,
+                    audio_details=video.audio_details,
+                    current_status="Failed to Process"
+                )
+            record = NonSeriesVideoSerializer(non_series_record)
             
-            location = directory['video_records_dir']
-            
-            os.remove(f'{video.video_location}{video.serial}.mp4')
-            os.remove(f'{location}{video.serial}.mp4')
+            os.remove(f'{video.temp_video_location}{video.serial}.mp4')
             
             video.delete()
             

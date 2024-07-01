@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import MainNavbar from "../../Components/static/MainNavbar";
+import VideoResultsPage from "../../Components/requests/VideoResultsPage";
 
 const SearchResult = () => {
   useEffect(() => {
@@ -13,6 +14,7 @@ const SearchResult = () => {
     <div>
       <MainNavbar />
       <h1>Results</h1>
+      <VideoResultsPage />
     </div>
   );
 };

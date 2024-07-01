@@ -32,3 +32,4 @@ import management.jobs as jobs
 jobs.start_identifiers()
 jobs.start_json_record()
 jobs.start_genre_check()
+jobs.start_series_data()

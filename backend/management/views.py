@@ -12,8 +12,9 @@ import json
 import jwt
 import os
 
+from functions.function import auth_check
 from user.models import Credentials
-from videos.models import Video, VideoComments, VideoHistory
+from videos.models import Video, VideoComments, VideoHistory, SeriesVideo, NonSeriesVideo
 from core.serializer import VideoSerializer
 
 logger = logging.getLogger(__name__)
@@ -41,20 +42,11 @@ def get_my_videos(request):
     try:
         if request.method == 'GET':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
-            videos = Video.objects.filter(uploaded_by_id=user.id).all()[:5]
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
+            videos = Video.objects.filter(uploaded_by_id=user.id).all().order_by('-last_updated')[:5]
             all_videos = []
             for video in videos:
                 all_videos.append({
@@ -75,24 +67,14 @@ def get_my_uploads(request, page):
     try:
         if request.method == 'GET':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             page = int(page)
             page_size = 5
             start_index = (page - 1) * page_size
             end_index = start_index + page_size
-            
             videos = Video.objects.filter(uploaded_by_id=user.id)[start_index:end_index]
             all_videos = []
             for video in videos:
@@ -114,24 +96,19 @@ def get_video_record(request, serial):
     try:
         if request.method == 'GET':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             video_record = Video.objects.filter(serial=serial).first()
             if not video_record or video_record.uploaded_by_id != user.id:
                 return JsonResponse({'message': 'Video not found'},
                                     status=status.HTTP_404_NOT_FOUND)
-            image_pathway = video_record.thumbnail_location + video_record.serial + '.jpg'
+            if video_record.series:
+                secondary_record = SeriesVideo.objects.filter(batch_instance=video_record.id).first()
+            if not video_record.series:
+                secondary_record = NonSeriesVideo.objects.filter(video_instance=video_record.id).first()
+            image_pathway = secondary_record.thumbnail_location + video_record.serial + '.jpg'
             image = base64.b64encode(open(image_pathway, 'rb').read()).decode('utf-8')        
             data = {
                 'title': video_record.title,
@@ -147,8 +124,39 @@ def get_video_record(request, serial):
                 'creators': video_record.creators,
                 'current_status': video_record.current_status,
                 'image': f'data:image/jpg;base64,{image}',
+                'season_metadata': video_record.season_metadata,
+                'series': video_record.series,
             }
             return JsonResponse({'video': data},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+@api_view(['GET'])
+def get_season_records(request, serial, season):
+    try:
+        if request.method == 'GET':
+            token = request.headers.get('Authorization')
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
+            master_record = Video.objects.filter(serial=serial, uploaded_by=user.id).first()
+            if not master_record:
+                return JsonResponse({'message': 'Video not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            video_records = SeriesVideo.objects.filter(batch_instance=master_record.id,
+                                                       season=season).all().order_by('episode')
+            video_data = []
+            for video_record in video_records:
+                video_data.append({
+                    'season': video_record.season,
+                    'episode': video_record.episode,
+                    'episode_serial': video_record.video_serial,
+                })
+            return JsonResponse({'season': video_data},
                                 status=status.HTTP_200_OK)
     except Exception as e:
         logging.error(f"Error during video upload: {str(e)}")
@@ -160,19 +168,10 @@ def update_video_record(request, serial):
     try:
         if request.method == 'PATCH':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             video_record = Video.objects.filter(serial=serial).first()
             if not video_record or video_record.uploaded_by_id != user.id:
                 return JsonResponse({'message': 'Video not found'},
@@ -217,8 +216,130 @@ def update_video_record(request, serial):
         return JsonResponse({'message': 'Internal server error'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['PATCH'])
+def update_episode_record(request, serial, season, episode):
+    try:
+        if request.method == 'PATCH':
+            print('request data', request.data)
+            token = request.headers.get('Authorization')
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
+            master_serial = request.data['master_serial']
+            video_record = Video.objects.filter(serial=master_serial).first()
+            if not video_record or video_record.uploaded_by_id != user.id:
+                return JsonResponse({'message': 'Video not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            video_serial = request.data['episode_serial']
+            episode_record = SeriesVideo.objects.filter(batch_instance=video_record.id,
+                                                        episode=episode,
+                                                        season=season,
+                                                        video_serial=video_serial).first()
+            if not episode_record:
+                return JsonResponse({'message': 'Episode not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            data = request.data
+            episode_record.episode = data['new_episode']
+            episode_record.season = data['new_season']
+            episode_record.save()
+            video_record.update_series = False
+            video_record.save()
+            return JsonResponse({'message': 'Episode record updated successfully'},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['PATCH'])
+def update_season_records(request, serial):
+    try:
+        if request.method == 'PATCH':
+            token = request.headers.get('Authorization')
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
+            master_id = request.data['master_id']
+            season = request.data['season']
+            video_record = Video.objects.filter(id=master_id,
+                                                serial=serial).first()
+            if not video_record or video_record.uploaded_by_id != user.id:
+                return JsonResponse({'message': 'Video not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            season_records = SeriesVideo.objects.filter(batch_instance=master_id,
+                                                       season=season).all()
+            if not season_records:
+                return JsonResponse({'message': 'Season not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            data = request.data
+            for season_record in season_records:
+                season_record.season = data['new_season']
+                season_record.episode = data['new_episode']
+                season_record.save()
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['DELETE'])
 def delete_video_record(request, serial):
+    try:
+        if request.method == 'DELETE':
+            token = request.headers.get('Authorization')
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
+            video_record = Video.objects.filter(serial=serial).first()  
+            if not video_record or video_record.uploaded_by_id != user.id:
+                return JsonResponse({'message': 'Video not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            os.remove(f'{video_record.thumbnail_location}{serial}.jpg')
+            os.remove(f'{video_record.video_location}{serial}.mp4')
+            video_record.delete()
+            return JsonResponse({'message': 'Video deleted'},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+def delete_episode_record(request, serial, episode, season):
+    try:
+        if request.method == 'DELETE':
+            token = request.headers.get('Authorization')
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
+            video_serial = request.data['episode_serial']
+            video_record = Video.objects.filter(serial=serial).first()
+            if not video_record or video_record.uploaded_by_id != user.id:
+                return JsonResponse({'message': 'Video not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            episode_record = SeriesVideo.objects.filter(batch_instance=video_record.id,
+                                                        episode=episode,
+                                                        season=season,
+                                                        video_serial=video_serial).first()
+            if not episode_record:
+                return JsonResponse({'message': 'Episode not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            os.remove(f'{episode_record.video_location}{video_serial}.mp4')
+            episode_record.delete()
+            video_record.update_series = False
+            video_record.save()
+            return JsonResponse({'message': 'Episode deleted'},
+                                status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+def delete_season_records(request, serial):
     try:
         if request.method == 'DELETE':
             token = request.headers.get('Authorization')
@@ -235,14 +356,22 @@ def delete_video_record(request, serial):
             if not user:
                 return JsonResponse({'message': 'User not found'},
                                     status=status.HTTP_404_NOT_FOUND)
-            video_record = Video.objects.filter(serial=serial).first()  
+            master_id = request.data['master_id']
+            season = request.data['season']
+            video_record = Video.objects.filter(id=master_id,
+                                                serial=serial).first()
             if not video_record or video_record.uploaded_by_id != user.id:
                 return JsonResponse({'message': 'Video not found'},
                                     status=status.HTTP_404_NOT_FOUND)
-            os.remove(f'{video_record.thumbnail_location}{serial}.jpg')
-            os.remove(f'{video_record.video_location}{serial}.mp4')
-            video_record.delete()
-            return JsonResponse({'message': 'Video deleted'},
+            season_records = SeriesVideo.objects.filter(batch_instance=master_id,
+                                                       season=season).all()
+            if not season_records:
+                return JsonResponse({'message': 'Season not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            for season_record in season_records:
+                os.remove(f'{season_record.video_location}{serial}.mp4')
+                season_record.delete()
+            return JsonResponse({'message': 'Season deleted'},
                                 status=status.HTTP_200_OK)
     except Exception as e:
         logging.error(f"Error during video upload: {str(e)}")
@@ -283,19 +412,10 @@ def change_email(request):
     try:
         if request.method == 'PATCH':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             data = request.data
             new_email = data['new_email']
             valid_email = Credentials.objects.filter(email=new_email).first()
@@ -317,19 +437,10 @@ def change_username(request):
     try:
         if request.method == 'PATCH':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             data = request.data
             new_username = data['new_username']
             valid_username = Credentials.objects.filter(username=new_username).first()
@@ -351,19 +462,10 @@ def delete_account(request):
     try:
         if request.method == 'PATCH':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             if hashlib.sha256(request.data['password'].encode()).hexdigest() != user.password:
                 return JsonResponse({'message': 'Incorrect password'},
                                     status=status.HTTP_400_BAD_REQUEST)
@@ -378,3 +480,5 @@ def delete_account(request):
         logging.error(f"Error during video upload: {str(e)}")
         return JsonResponse({'message': 'Internal server error'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            

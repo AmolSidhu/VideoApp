@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import MainNavbar from "../../Components/static/MainNavbar";
-import UploadVideoForm from "../../Components/forms/UploadVideoForm";
+import VideoSwitch from "../../Components/static/VideoSwitch";
 
 const UploadVideo = () => {
   useEffect(() => {
@@ -16,7 +16,7 @@ const UploadVideo = () => {
     <div>
       <MainNavbar />
       <h1>Upload Video</h1>
-      <UploadVideoForm />
+      <VideoSwitch />
     </div>
   );
 };

@@ -8,7 +8,7 @@ const VideoSearch = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (query.trim()) {
-      navigate(`/search/v/${query}`);
+      navigate(`/search/v?query=${query}`);
     }
   };
 

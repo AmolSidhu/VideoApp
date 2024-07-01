@@ -1,40 +1,33 @@
-import React, { useState, useEffect } from "react";
-import server from "../static/Constants";
+import React from 'react';
+import { Form, Button, Alert, ProgressBar } from 'react-bootstrap';
 
 const TestRequest = () => {
-  const [image, setImage] = useState(null);
-
-  useEffect(() => {
-    const fetchImage = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`${server}/image_test/`, {
-          method: "GET",
-          headers: {
-            Authorization: token,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setImage(data.image);
-        console.log(data.image);
-      } catch {}
-    };
-    fetchImage();
-  }, []);
-
-  return (
+return (
     <div>
-      <h1>Test Request</h1>
-      <p>Test Request</p>
-      <img src={image} alt="Test" />
-    </div>
-  );
-};
+        <h1>Test Request</h1>
+        <Form>
+            <Form.Group controlId="formBasicEmail">
+                <Form.Label>Email address</Form.Label>
+                <Form.Control type="email" placeholder="Enter email" />
+                <Form.Text className="text-muted">
+                    We'll never share your email with anyone else.
+                </Form.Text>
+            </Form.Group>
 
+            <Form.Group controlId="formBasicPassword">
+                <Form.Label>Password</Form.Label>
+                <Form.Control type="password" placeholder="Password" />
+            </Form.Group>
+            <Form.Group controlId="formBasicCheckbox">
+                <Form.Check type="checkbox" label="Check me out" />
+            </Form.Group>
+            <Button variant="primary" type="submit">
+                Submit
+            </Button>
+        </Form>
+        <Alert variant="success">This is a success alert—check it out!</Alert>
+        <ProgressBar now={60} />
+    </div>
+);
+}
 export default TestRequest;

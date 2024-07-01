@@ -4,32 +4,66 @@ import server from "../static/Constants";
 function VideoPopup({ serial, onClose }) {
   const [video, setVideo] = useState(null);
   const [error, setError] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
+  const [selectedSeason, setSelectedSeason] = useState(null);
+
+  const fetchVideo = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${server}/video_data/${serial}`, {
+        method: "GET",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setVideo(data);
+      if (data.series && data.season_metadata) {
+        const firstSeason = Object.keys(data.season_metadata)[0];
+        setSelectedSeason(firstSeason);
+        fetchEpisodes(firstSeason);
+      }
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const fetchEpisodes = async (season) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${server}/episode_data/${serial}/${season}`, {
+        method: "GET",  // Change this to "GET"
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setEpisodes(data.episodes);
+    } catch (error) {
+      console.error("Error fetching episodes:", error);
+    }
+  };
+
+  const handleSeasonChange = (event) => {
+    const season = event.target.value;
+    setSelectedSeason(season);
+    fetchEpisodes(season);
+  };
 
   useEffect(() => {
-    const fetchVideo = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`${server}/video_data/${serial}`, {
-          method: "GET",
-          headers: {
-            Authorization: token,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setVideo(data);
-        console.log(data);
-      } catch (error) {
-        setError(error.message);
-      }
-    };
-
-    fetchVideo();
+    fetchVideo(); // eslint-disable-next-line
   }, [serial]);
 
   if (error) {
@@ -42,6 +76,7 @@ function VideoPopup({ serial, onClose }) {
       </div>
     );
   } else if (video) {
+    const coParam = video.series ? "s" : "n";
     return (
       <div className="popup">
         <div className="popup-inner">
@@ -63,16 +98,50 @@ function VideoPopup({ serial, onClose }) {
             {video.video_creators && video.video_creators.length > 0 && (
               <p>Creators: {video.video_creators.join(", ")}</p>
             )}
-            <p>Duration: {video.video_duration}</p>
-            <p>Serial: {serial}</p>
-            <p>Total Rating Score: {video.video_rating}</p>
             <p>Description: {video.video_description}</p>
-            <a href={`/player/?serial=${serial}`}>Watch Video</a>
+            <p>Rating: {video.video_rating}</p>
+            {video.series && video.season_metadata && (
+              <div>
+                <h3>Select Season:</h3>
+                <select onChange={handleSeasonChange} value={selectedSeason}>
+                  {Object.keys(video.season_metadata).map((season) => (
+                    <option key={season} value={season}>
+                      Season {season}
+                    </option>
+                  ))}
+                </select>
+                {episodes.length > 0 && (
+                  <div>
+                    <h3>Episodes:</h3>
+                    <ul>
+                      {episodes.map((episode) => (
+                        <li key={episode.video_serial}>
+                          {episode.episode} -{" "}
+                          <a href={`/player/?serial=${episode.video_serial}&co=${coParam}`}>
+                            Play
+                          </a>
+                          {episode.resume && (
+                            <>
+                              {" "}or{" "}
+                              <a href={`/player/?serial=${episode.video_serial}&resume=true&co=${coParam}`}>
+                                Resume
+                              </a>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+            <a href={`/player/?serial=${serial}&co=${coParam}`}>Watch Video</a>
             <br />
             {video.resume && (
-              <a href={`/player/?serial=${serial}&resume=true`}>Resume</a>
+              <a href={`/player/?serial=${serial}&resume=true&co=${coParam}`}>
+                Resume
+              </a>
             )}
-            <br />
           </div>
         </div>
       </div>

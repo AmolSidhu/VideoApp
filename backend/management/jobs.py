@@ -1,5 +1,5 @@
 from apscheduler.schedulers.background import BackgroundScheduler
-from django.db import transaction
+from collections import defaultdict
 import json
 import os
 import bs4 as bs
@@ -7,7 +7,7 @@ import requests
 import re
 
 from .models import Identifier, IdentifierTempTable, TempGenreTable
-from videos.models import VideoGenre, Video
+from videos.models import VideoGenre, Video, SeriesVideo
 from functions.function import normalize_unicode, json_format
 from core.serializer import IdentifierSerializer, VideoGenresSerializer
 
@@ -354,29 +354,35 @@ def start_genre_check():
     scheduler.add_job(check_existing_genres, 'interval', minutes=10)
     scheduler.start()
 
-def genre_test():
-    VideoGenre.objects.all().delete()
-
-    genres = Video.objects.filter(private=False).all()
-    genre_dict = {}
-    known_genres = ['Action', 'Adventure', 'Animation', 'Biography', 'Comedy',
-                    'Crime', 'Documentary', 'Drama', 'Family', 'Fantasy',
-                    'Film-Noir', 'History', 'Horror', 'Music', 'Musical',
-                    'Mystery', 'Romance', 'Sci-Fi', 'Sport', 'Thriller',
-                    'War', 'Western']
-    for video in genres:
-        tags = video.tags if isinstance(video.tags, list) else []
-        for tag in tags:
-            if tag in genre_dict:
-                genre_dict[tag]['number_of_public_records'] += 1
-            else:
-                custom = tag not in known_genres
-                genre_dict[tag] = {
-                    'genre': tag,
-                    'custom': custom,
-                    'number_of_public_records': 1
-                }
-    for genre_data in genre_dict.values():
-        added_genre = VideoGenre.objects.create(**genre_data)
-        serializer = VideoGenresSerializer(added_genre)
+def check_series_data():
+    finished = False
     
+    while not finished:
+        video_record = Video.objects.filter(current_status='Processing Completed',
+                                            update_series=False).first()
+        if video_record is None:
+            finished = True
+            break
+        
+        series_videos = SeriesVideo.objects.filter(batch_instance=video_record,
+                                                   current_status='Processing Completed')
+        
+        if not series_videos.exists():
+            video_record.update_series = True
+            video_record.save()
+            continue
+        
+        seasons = defaultdict(int)
+        for sv in series_videos:
+            seasons[sv.season] += 1
+        
+        video_record.total_seasons = len(seasons)
+        video_record.total_episodes = sum(seasons.values())
+        video_record.season_metadata = {str(season): count for season, count in seasons.items()}
+        video_record.update_series = True
+        video_record.save()
+        
+def start_series_data():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(check_series_data, 'interval', minutes=10)
+    scheduler.start()

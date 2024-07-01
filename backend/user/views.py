@@ -10,6 +10,7 @@ from rest_framework.response import Response
 import datetime
 
 from .models import Credentials
+from functions.function import auth_check
 
 import hashlib
 import jwt
@@ -125,19 +126,10 @@ def change_password(request):
     try:
         if request.method == 'PATCH':
             token = request.headers.get('Authorization')
-            if not token:
-                return JsonResponse({'message': 'Invalid or missing token'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            try:
-                payload = jwt.decode(token, 'SECRET_KEY', algorithms=['HS256'])
-            except jwt.ExpiredSignatureError:
-                return JsonResponse({'message': 'Token expired'},
-                                    status=status.HTTP_403_FORBIDDEN)
-            user = Credentials.objects.filter(username=payload['username'],
-                                              email=payload['email']).first()
-            if not user:
-                return JsonResponse({'message': 'User not found'},
-                                    status=status.HTTP_404_NOT_FOUND)
+            auth = auth_check(token)
+            if 'error' in auth:
+                return auth['error']
+            user = auth['user']
             old_password = hashlib.sha256(request.data['oldPassword'].encode()).hexdigest()
             if old_password != user.password:
                 return JsonResponse({'message': 'Incorrect old password'},
@@ -176,5 +168,26 @@ def forgot_password(request):
                                 status=status.HTTP_200_OK)
     except Exception as e:
         logging.error(f"Error during video upload: {str(e)}")
+        return JsonResponse({'message': 'Internal server error'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PATCH'])
+def resend_verification(request):
+    try:
+        if request.method == 'PATCH':
+            user = Credentials.objects.filter(email=request.data['email']).first()
+            if not user:
+                return JsonResponse({'message': 'User not found'},
+                                    status=status.HTTP_404_NOT_FOUND)
+            else:
+                subject = 'Verification Code'
+                message = f'Your verification code is: {user.verification_code}'
+                email_from = settings.EMAIL_HOST_USER
+                recipient_list = [user.email]
+                send_mail(subject, message, email_from, recipient_list)
+                return JsonResponse({'message': 'Verification code sent successfully'},
+                                    status=status.HTTP_200_OK)
+    except Exception as e:
+        logging.error(f"Error during verification code resend: {str(e)}")
         return JsonResponse({'message': 'Internal server error'},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)

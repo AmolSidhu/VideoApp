@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from videos.models import Video, TempVideo, VideoGenre
+from videos.models import Video, TempVideo, VideoGenre, SeriesVideo, NonSeriesVideo
 from user.models import Credentials
 from management.models import Identifier
 
@@ -26,4 +26,14 @@ class IdentifierSerializer(serializers.ModelSerializer):
 class VideoGenresSerializer(serializers.ModelSerializer):
     class Meta:
         model = VideoGenre
+        fields = '__all__'
+
+class SeriesVideoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SeriesVideo
+        fields = '__all__'
+
+class NonSeriesVideoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NonSeriesVideo
         fields = '__all__'

@@ -1,0 +1,15 @@
+.custom-checkbox {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+  }
+  
+  .custom-checkbox .form-check-input {
+    margin-left: 0;
+    margin-right: 10px;
+  }
+  
+  .clickable {
+    cursor: pointer;
+  }
+  

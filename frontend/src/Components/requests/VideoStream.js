@@ -17,7 +17,8 @@ const VideoPlayer = () => {
       const serial = params.get("serial");
       const token = localStorage.getItem("token");
       const resume = params.get("resume") === "true";
-      const src = `${server}/stream/${serial}/${token}/`;
+      const videoType = params.get("co");
+      const src = `${server}/stream/${serial}/${token}/${videoType}`;
 
       console.log("Video source:", src);
 
@@ -37,7 +38,7 @@ const VideoPlayer = () => {
       vjsPlayer.ready(() => {
         console.log("Video is ready to be played!");
         if (resume) {
-          fetch(`${server}/video_history/${serial}`, {
+          fetch(`${server}/video_history/${serial}/${videoType}/`, {
             method: "GET",
             headers: {
               Authorization: token,
@@ -62,7 +63,7 @@ const VideoPlayer = () => {
 
         const updatePlaybackTime = () => {
           const currentTime = vjsPlayer.currentTime();
-          fetch(`${server}/update_playback_time/`, {
+          fetch(`${server}/update_playback_time/${videoType}/${serial}/`, {
             method: "POST",
             headers: {
               Authorization: token,

@@ -25,6 +25,7 @@ import NotFound from "./pages/misc/NotFound";
 import ViewAllUploads from "./pages/management/ViewAllUploads";
 import EditVideo from "./pages/management/EditVideo";
 import ChangePassword from "./pages/management/ChangePassword";
+import ForgotPassword from "./pages/management/ForgotPassword";
 
 //testing pages delete later
 import Test from "./pages/misc/Test";
@@ -52,6 +53,7 @@ function App() {
         <Route path="/edit/video/all/" element={<ViewAllUploads />} />
         <Route path="/edit/video/" element={<EditVideo />} />
         <Route path="/change/password/" element={<ChangePassword />} />
+        <Route path="/u/forgot-password/" element={<ForgotPassword />} />
 
         <Route path="/test/" element={<Test />} />
       </Routes>
